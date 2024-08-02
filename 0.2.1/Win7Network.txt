@@ -1,0 +1,669 @@
+// ==WindhawkMod==
+
+// @id              win7-van-restore
+
+// @name            Restore windows 7 network flyout 
+
+// @description     Hooks showminiflyout in pnidui.dll to call RunVANUI instead
+
+// @version         0.1
+
+// @author          wiktorwiktor12 for WH mod, joleman11 for original discovery 
+
+// @include         explorer.exe
+
+// @compilerOptions -lcomdlg32 -lcomctl32 -lgdi32 -luxtheme -lole32 -ldwmapi
+
+// ==/WindhawkMod==
+
+
+
+// ==WindhawkModSettings==
+
+/*
+
+- useBasicTheme: false
+
+  $name: Use Basic Theme
+
+  $description: does not apply the thickframe window style to the window, so it acts as if it is basic theme
+
+*/
+
+// ==/WindhawkModSettings==
+
+
+
+#include <Windows.h>
+
+#include <minwindef.h>
+
+#include <processthreadsapi.h>
+
+#include <shellapi.h>
+
+#include <stdio.h>
+
+#include <windhawk_api.h>
+
+#include <windhawk_utils.h>
+
+#include <combaseapi.h>
+
+#include <Objbase.h>
+
+#include <dwmapi.h>
+
+
+
+bool bUseBasicTheme = false;
+
+bool DwmIsCompositionEnabledCustom(WINBOOL *pfEnabled)
+
+{
+
+    bool result = DwmIsCompositionEnabled(pfEnabled);
+
+    
+
+    if (bUseBasicTheme)
+
+        *pfEnabled = false;
+
+
+
+    return result;
+
+}
+
+
+
+inline HRESULT(*RunVANUI)(UINT param_1, int param_2, int param_3, int param_4, HANDLE param_5, int param_6);
+
+
+
+DWORD StyleThreadId;
+
+
+
+DWORD tickHid = 0;
+
+const DWORD tickShowDelay = 250;
+
+
+
+UINT g_uiVANWindowMessage = 0;
+
+HWND g_VanHandle = 0;
+
+RECT* g_rcAnchor = 0;
+
+
+
+HWND GetVANWindow()
+
+{
+
+    if (!g_VanHandle || !IsWindow(g_VanHandle))
+
+        g_VanHandle = FindWindowExW(0, 0, L"NativeHWNDHost", L"View Available Networks");
+
+
+
+    return g_VanHandle;
+
+}
+
+
+
+WINBOOL NotifyVAN(WPARAM param1,LPARAM param2)
+
+{
+
+    UINT myMessage = RegisterWindowMessageW(L"Microsoft.VAN.Message");
+
+    HWND v8 = FindWindowExW(0, 0, L"NativeHWNDHost", L"View Available Networks");
+
+
+
+    if (v8 && IsWindow(v8))
+
+    {
+
+        auto res = PostMessageW(v8, myMessage, 0, 0);
+
+        return res;
+
+    }
+
+        
+
+
+
+    return 0;
+
+}
+
+
+
+inline void(__cdecl*HideVanUI)(void* _this);
+
+void HideVanUI_hook(void* _this)
+
+{
+
+    HideVanUI(_this);
+
+    tickHid = GetTickCount();
+
+}
+
+
+
+inline __int64(__fastcall* ShowMiniFlyout_orig)(void* _this);
+
+__int64 __fastcall ShowMiniFlyout_hook(void* _this)
+
+{
+
+    if (GetTickCount() >= (tickHid + tickShowDelay) && NotifyVAN(0,0))
+
+        return 0;
+
+
+
+    if (GetTickCount() >= tickHid + tickShowDelay)
+
+    {
+
+        UINT myMessage = RegisterWindowMessageW(L"Microsoft.VAN.Message");
+
+        auto event = CreateEventW(0,1,0,0);
+
+        RunVANUI(myMessage,5,1,0,event,0);
+
+        HWND v8 = FindWindowExW(0, 0, L"NativeHWNDHost", L"View Available Networks");
+
+        CloseHandle(event);
+
+    }
+
+
+
+    return 0;
+
+}
+
+
+
+void(__fastcall* PositionVanUI)(void* _this, char a2, tagRECT* a3, int a4, UINT flags, POINT* anchorPoint);
+
+void __fastcall PositionVanUI_Hook(void* _this, char a2, tagRECT* a3, int a4, UINT flags, POINT* anchorPoint)
+
+{
+
+    int v6;
+
+    HWND v10; 
+
+    int v11; 
+
+    POINT *v12;
+
+    int v13;
+
+    SIZE windowSize;
+
+    int v15[2];
+
+    struct tagRECT rc;
+
+    struct tagRECT Rect;
+
+    int pvAttribute;
+
+    BOOL v19;
+
+    BOOL pfEnabled;
+
+
+
+    v6 = 0;
+
+    v10 = (HWND)*( (HWND*)(((uintptr_t)_this) + 0x10) );
+
+
+
+    if (!bUseBasicTheme)
+
+    {
+
+        SetWindowLongPtrW(v10, GWL_STYLE, GetWindowLongPtrW(v10, GWL_STYLE) | (WS_THICKFRAME) );
+
+    }
+
+    else 
+
+    {
+
+        SetWindowLongPtrW(v10, GWL_STYLE, GetWindowLongPtrW(v10, GWL_STYLE) & ~(WS_THICKFRAME) );
+
+    }
+
+  
+
+  	if ( a2 )
+
+  	{
+
+  	  	pvAttribute = 0;
+
+  	  	v19 = 1;
+
+  	  	if ( DwmIsCompositionEnabledCustom(&v19) >= 0
+
+  	  	  && DwmGetWindowAttribute(v10, 1u, &pvAttribute, 4u) >= 0
+
+  	  	  && v19
+
+  	  	  && !pvAttribute )
+
+  	  	{
+
+  	  	  	v13 = 2;
+
+  	  	  	DwmSetWindowAttribute(v10, 2u, &v13, 4u);
+
+  	  	}
+
+  	  	pfEnabled = 0;
+
+  	  	if ( DwmIsCompositionEnabledCustom(&pfEnabled) >= 0 )
+
+  	  	{
+
+  	  	  	if ( pfEnabled )
+
+  	  	  	{
+
+  	  	  	  	Rect.left = 0;
+
+  	  	  	  	Rect.top = 0;
+
+  	  	  	  	Rect.right = 0;
+
+  	  	  	  	Rect.bottom = 0;
+
+  	  	  	  	if ( AdjustWindowRectEx(&Rect, 0x40000u, 0, 0) )
+
+  	  	  	  	{
+
+  	  	  	  	  	v11 = (Rect.right - Rect.left) / 2;
+
+  	  	  	  	  	v6 = GetSystemMetrics(49) / 2 + v11;
+
+  	  	  	  	}
+
+  	  	  	}
+
+  	  	}
+
+  	}
+
+  	GetWindowRect(v10, &rc);
+
+  	InflateRect(&rc, v6, v6);
+
+  	windowSize.cx = rc.right - rc.left;
+
+  	windowSize.cy = rc.bottom - rc.top;
+
+  	if ( a3 )
+
+  	{
+
+  	  	windowSize.cx = 2 * v6 + a3->right - a3->left;
+
+  	  	windowSize.cy = 2 * v6 + a3->bottom - a3->top;
+
+  	}
+
+  	v12 = (POINT *)v15;
+
+  	v15[0] = (*g_rcAnchor).left;
+
+  	v15[1] = (*g_rcAnchor).top;
+
+  	if ( anchorPoint )
+
+  	  	v12 = anchorPoint;
+
+  	
+
+  	if ( CalculatePopupWindowPosition(v12, &windowSize, flags, g_rcAnchor, &rc) >= 0 )
+
+  	  	SetWindowPos(
+
+  	  	  v10,
+
+  	  	  (HWND)(((uintptr_t)HWND_MESSAGE)|0x2),
+
+  	  	   rc.left + (v6/2),
+
+  	  	   rc.top+ (v6/2),
+
+  	  	  windowSize.cx - v6,
+
+  	  	  windowSize.cy - v6,
+
+  	  	  a4 | 0x100);
+
+}
+
+
+
+LRESULT(__fastcall*CVanUI_TopWindowSubclassProc)(HWND hWnd,UINT uMsg,WPARAM wParam,LPARAM lParam,unsigned __int64 a4,unsigned __int64 a5);
+
+LRESULT __fastcall CVanUI_TopWindowSubclassProc_Hook(
+
+    HWND hWnd,
+
+    UINT uMsg,
+
+    WPARAM wParam,
+
+    LPARAM lParam,
+
+    unsigned __int64 a4,
+
+    unsigned __int64 a5
+
+)
+
+{
+
+    if (uMsg == WM_NCHITTEST)
+
+    {
+
+        LRESULT lr = CVanUI_TopWindowSubclassProc(
+
+            hWnd, uMsg, wParam, lParam,a4,a5
+
+        );
+
+        switch (lr)
+
+        {
+
+            case HTTOP:
+
+            case HTTOPRIGHT:
+
+            case HTRIGHT:
+
+            case HTBOTTOMRIGHT:
+
+            case HTBOTTOM:
+
+            case HTBOTTOMLEFT:
+
+            case HTLEFT:
+
+            case HTTOPLEFT:
+
+                return HTCLIENT;
+
+            default:
+
+                return lr;
+
+        }
+
+    }
+
+
+
+    return CVanUI_TopWindowSubclassProc(
+
+        hWnd, uMsg, wParam, lParam,a4,a5
+
+    );
+
+}
+
+
+
+const WindhawkUtils::SYMBOL_HOOK hooks[] = {
+
+    {
+
+        {
+
+            L"private: long __cdecl CPniMainDlg::_ShowMiniFlyout(void)"
+
+        },
+
+        &ShowMiniFlyout_orig,
+
+        ShowMiniFlyout_hook,
+
+        false
+
+    }
+
+    
+
+};
+
+
+
+const WindhawkUtils::SYMBOL_HOOK hooks2[] = {
+
+    {
+
+        {
+
+            L"public: void __cdecl CVanUI::HideVanUI(void)"
+
+        },
+
+        &HideVanUI,
+
+        HideVanUI_hook,
+
+        false
+
+    },
+
+    {
+
+        {
+
+            L"public: void __cdecl CListUiBase::PositionVanUI(bool,struct tagRECT *,unsigned int,unsigned int,struct tagPOINT *)"
+
+        },
+
+        &PositionVanUI,
+
+        PositionVanUI_Hook,
+
+        false
+
+    },
+
+    {
+
+        {
+
+            L"public: static __int64 __cdecl CVanUI::TopWindowSubclassProc(struct HWND__ *,unsigned int,unsigned __int64,__int64,unsigned __int64,unsigned __int64)"
+
+        },
+
+        &CVanUI_TopWindowSubclassProc,
+
+        CVanUI_TopWindowSubclassProc_Hook,
+
+        false
+
+    }
+
+};
+
+
+
+// The mod is being initialized, load settings, hook functions, and do other
+
+// initialization stuff if required.
+
+BOOL Wh_ModInit() 
+
+{
+
+    Wh_Log(L"Init");
+
+
+
+    bUseBasicTheme = Wh_GetIntSetting(L"useBasicTheme") >= 1;
+
+    Wh_Log(L"bUseBasicTheme %i",(int)bUseBasicTheme);
+
+
+
+    HMODULE pniduiModule = LoadLibrary(L"pnidui.dll");
+
+    if (!pniduiModule)
+
+    {
+
+        Wh_Log(L"pniduiModule not found");
+
+        return FALSE;
+
+    }
+
+
+
+    HMODULE vanModule = LoadLibrary(L"van.dll");
+
+    if (!vanModule)
+
+    {
+
+        Wh_Log(L"vanModule not found");
+
+        return FALSE;
+
+    }
+
+
+
+    RunVANUI = decltype(RunVANUI)(GetProcAddress(vanModule, "RunVANUI"));
+
+    if (!RunVANUI)
+
+    {
+
+        Wh_Log(L"RunVANUI not found");
+
+        return FALSE;
+
+    }
+
+
+
+    WH_FIND_SYMBOL findSymbol;
+
+    HANDLE firstSymbol = Wh_FindFirstSymbol(vanModule, NULL,&findSymbol);
+
+    if (!firstSymbol)
+
+    {
+
+        Wh_Log(L"Failed to get first Symbol!");
+
+        return FALSE;
+
+    }
+
+
+
+    do 
+
+    {
+
+        if (_wcsicmp(findSymbol.symbol, L"struct tagRECT g_rcAnchor") == 0)
+
+        {
+
+            g_rcAnchor = decltype(g_rcAnchor)(findSymbol.address);
+
+            Wh_Log(L"g_rcAnchor %i %s",findSymbol.address,findSymbol.symbol);
+
+            break;
+
+        }
+
+    }
+
+    while (Wh_FindNextSymbol(firstSymbol,&findSymbol));
+
+
+
+    HMODULE xwizardsModule = LoadLibrary(L"xwizards.dll");
+
+    if (!xwizardsModule)
+
+    {
+
+        Wh_Log(L"xwizardsModule not found");
+
+        return FALSE;
+
+    }
+
+
+
+    g_uiVANWindowMessage = RegisterWindowMessageW(L"Microsoft.VAN.Message");
+
+
+
+    if ( !WindhawkUtils::HookSymbols(pniduiModule,hooks, ARRAYSIZE(hooks)) || !WindhawkUtils::HookSymbols(vanModule,hooks2, ARRAYSIZE(hooks2)) )
+
+    {
+
+        Wh_Log(L"Failed to hook one or more symbol functions");
+
+        return FALSE;
+
+    }
+
+
+
+    return TRUE;
+
+}
+
+
+
+// The mod is being unloaded, free all allocated resources.
+
+void Wh_ModUninit() 
+
+{
+
+    Wh_Log(L"Uninit");
+
+}
+
+
+
+void Wh_ModSettingsChanged(void)
+
+{
+
+    bUseBasicTheme = Wh_GetIntSetting(L"useBasicTheme") >= 1;
+
+    Wh_Log(L"bUseBasicTheme %i",(int)bUseBasicTheme);
+
+}

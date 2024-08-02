@@ -1,0 +1,36 @@
+// ==WindhawkMod==
+// @id              disable-metro-osd
+// @name            Disable the Windows 8+ OSD
+// @description     Disables the Volume/Brightness Popup
+// @version         1.0
+// @author          Joleman11
+// @github          https://github.com/joleman11
+// @include         explorer.exe
+// ==/WindhawkMod==
+
+using CreateWindowExW_t = decltype(&CreateWindowExW);
+CreateWindowExW_t CreateWindowExW_Original;
+HWND WINAPI CreateWindowExW_Hook(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, PVOID lpParam) 
+{
+    if ((((ULONG_PTR)lpClassName & ~(ULONG_PTR)0xffff) != 0) && _wcsicmp(lpClassName, L"DirectUIHWND") == 0) {
+        // This is a pretty terrible way of doing this.
+        // Msg me if there's a better way. 
+        RECT windowRect;
+        GetWindowRect(hWndParent, &windowRect);
+        if (windowRect.top == 60 && windowRect.bottom == 60 && windowRect.left == 50 && windowRect.right == 50)
+        {
+            //Wh_Log(L"%ld %ld %ld %ld", windowRect.top, windowRect.bottom, windowRect.left, windowRect.right);
+            Wh_Log(L"Hooked onto OSD!");
+            HWND hWndParent69 = CreateWindowEx(0, L"NativeHWNDHost", L"Dummy Parent Window", WS_OVERLAPPEDWINDOW, 0, 0, 0, 0, NULL, NULL, NULL, NULL);
+            return CreateWindowExW_Original(dwExStyle, lpClassName, lpWindowName, dwStyle, X, Y, nWidth, nHeight, hWndParent69, NULL, NULL, NULL);
+        }
+    }
+    return CreateWindowExW_Original(dwExStyle, lpClassName, lpWindowName, dwStyle, X, Y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
+}
+
+BOOL Wh_ModInit()
+{
+    Wh_Log(L"Init " WH_MOD_ID L" version " WH_MOD_VERSION);
+    Wh_SetFunctionHook((void*)CreateWindowExW, (void*)CreateWindowExW_Hook, (void**)&CreateWindowExW_Original);
+    return TRUE;
+}

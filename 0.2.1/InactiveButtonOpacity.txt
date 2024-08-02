@@ -1,0 +1,39 @@
+// ==WindhawkMod==
+// @id              inactive-button-opacity
+// @name            Inactive Button Opacity
+// @version         0.1
+// @include         dwm.exe
+// ==/WindhawkMod==
+
+#include <windhawk_utils.h>
+
+bool (__thiscall *CButton__UpdateCurrentGlyphOpacity_orig)(void *, bool);
+bool __thiscall CButton__UpdateCurrentGlyphOpacity_hook(void *pThis, bool param_1) {
+    *((float *)pThis + 101) = 1.0;
+    return CButton__UpdateCurrentGlyphOpacity_orig(pThis, param_1);
+}
+
+BOOL Wh_ModInit() {
+    Wh_Log(L"Init");
+
+    HMODULE uDWM = LoadLibraryW(L"uDWM.dll");
+
+    if (!uDWM) {
+        Wh_Log(L"Failed to load uDWM.dll");
+        return FALSE;
+    }
+
+    WindhawkUtils::SYMBOL_HOOK symbolHook[] = {
+        {
+            {L"private: void __cdecl CButton::UpdateCurrentGlyphOpacity(bool)"},
+            (void**)&CButton__UpdateCurrentGlyphOpacity_orig,
+            (void*)CButton__UpdateCurrentGlyphOpacity_hook,
+        },
+    };
+
+    if (!WindhawkUtils::HookSymbols(uDWM, symbolHook, 1)) {
+        Wh_Log(L"Error hooking");
+        return FALSE;
+    }
+    return TRUE;
+}
